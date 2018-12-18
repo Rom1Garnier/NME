@@ -1,0 +1,108 @@
+---
+title: "Analysis of NME rates in the United States"
+output: html_notebook
+---
+
+Note that the analysis only is performed in this notebook. 
+Figures 1 and 2 were produced using Python, with the same dataset (figure 1) or with a dataset using values predicted by the analysis in this notebook (figure 2). 
+
+First import the required packages used throughout the notebook. Make sure these are installed using `install.packages()`.
+
+```{r warning = FALSE, message = FALSE}
+rm(list = ls())
+library(conflicted)
+library(tidyverse)
+library(boot)
+library(Kendall)
+library(betareg)
+library(RCurl)
+```
+
+##Analysis of the association of NME proportions and vaccination rates in the United States in school year 2016-2017 and 2017-2018
+This corresponds to manuscript Figure 1 and supplemental figure 1
+
+Import the dataset
+
+```{r}
+#Full dataset - includes both school years
+#Note that this is linked to the Github repository and does not required the data to be downloaded. 
+#This would need to be changed if the data is imported from a local source.
+data_fig1 <- read_csv(getURL('https://raw.githubusercontent.com/Rom1Garnier/NME/master/Data/data_fig1_final.csv'))
+```
+
+```{r warning = FALSE}
+#List of vaccines and years - to loop on
+Vaccines <- c('MMR', 'DTaP', 'Varicella')
+Years <- c(2016, 2017)
+
+#Create an empty dataframe to put the results in
+result_table <- data.frame('Year' = numeric(), 'Vaccine' = character(), 'Beta_regression_estimate' = numeric(), 'Beta_regression_pvalue' = numeric())
+
+#Loop over vaccines and years, and run the Spearman correlation and the Beta regression for each year/vaccine pair
+for(vac in Vaccines){
+  for(year in Years){
+    data_temp <- data_fig1 %>% 
+      dplyr::filter(Year == year, Vaccine == vac)
+      Betareg_mod <- betareg(Vaccination_rate ~ p_NME_tot, data = data_temp)
+    
+    #Create a dataframe with the result of the current year/vaccine pair
+    result_models <- data.frame('Year' = year, 'Vaccine' = vac, 'Beta_regression_estimate' = round(Betareg_mod$coefficients$mean[2], 3), 'Beta_regression_pvalue' = round(summary(Betareg_mod)$coefficients$mean[8], 3))
+    
+    #Place the results in the result table
+    result_table <- result_table %>% bind_rows(result_models)
+  }
+}
+  
+```
+
+##Dynamics of ME and NME rates in select states with a history of recent policy changes 
+
+Import the data first 
+
+```{r}
+#Note that this points to the location of the data in the Github repository associated with the study
+data_ts_NME <- read_csv(getURL('https://raw.githubusercontent.com/Rom1Garnier/NME/master/Data/data_fig2.csv'))
+```
+
+Now run the forecasted linear models for years before the policy change 
+
+```{r}
+#Create empty dataframe
+pred <- as.data.frame(matrix(ncol = 0, nrow = 0))
+
+#Loop over the states in the dataframe
+for(state in unique(data_ts_NME$State)){
+  
+  #Exctract the data for a given state
+  data_temp <- data_ts_NME %>% 
+    dplyr::filter(State == state)
+  
+  #Restrict the data to the years prior to the policy change
+  data_mod <- data_temp %>% 
+    dplyr::filter(Year_begin < Year_change)
+  
+  #Run two models - for personal belief exemptions (PBE), and medical exemptions (PME)
+  mod_PBE <- lm(Percent_PBE ~ Year_begin, data = data_mod)
+  mod_PME <- lm(Percent_PME ~ Year_begin, data = data_mod)
+  
+  #Place the predicted values in the dataframe
+  data_temp$Mod_pred_PBE <- stats::predict(mod_PBE, data.frame(Year_begin = data_temp$Year_begin))
+  data_temp$Mod_pred_PME <- stats::predict(mod_PME, data.frame(Year_begin = data_temp$Year_begin))
+  
+  #In the case of Vermont also run independent models for religious and philosophical exemptions
+  if(state == 'Vermont'){ 
+    mod_philo <- lm(Percent_PBE_philo ~ Year_begin, data = data_mod)
+    mod_rel <- lm(Percent_PBE_religious ~ Year_begin, data = data_mod)
+  
+    data_temp$Mod_pred_Philo <- stats::predict(mod_philo, data.frame(Year_begin = data_temp$Year_begin))
+    data_temp$Mod_pred_Religious <- stats::predict(mod_rel, data.frame(Year_begin = data_temp$Year_begin))
+    }
+
+  pred <- pred %>% 
+    bind_rows(data_temp)
+}
+
+folder_path <- '' #provide a local path to export the dataset with predicted values. 
+write_csv(pred, paste(folder_path, 'data_fig2_with_predictions.csv'))
+```
+
