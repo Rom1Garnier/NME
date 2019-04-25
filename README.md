@@ -1,4 +1,4 @@
-# Getting personal: how vaccination exemptions shape herd immunity 
+# Getting personal: the role of childhood vaccination policies in shaping the landscape of vaccine exemptions
 
 This repository contains the code and data used in the statistical analysis presented in the manuscript. 
 
